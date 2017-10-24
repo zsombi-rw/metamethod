@@ -37,7 +37,6 @@ static TypeIndexContainer metaTypeContainer = {
 
 int MetaType::fromTypeIndex(const type_index &type)
 {
-    cout << "int" << typeid(int).name() << endl;
     TypeIndexIterator i = metaTypeContainer.find(type);
     return i == metaTypeContainer.cend() ? -1 : i->second;
 }

@@ -8,148 +8,18 @@
 #include <typeindex>
 
 #include "metatype.h"
+#include "function_traits.h"
+#include "arguments.h"
+#include "invokers.h"
 
 using namespace std;
 
-namespace traits
-{
-
-template<typename Type>
-struct function_traits;//: function_traits< decltype<&Type::operator ()) > {};
-
-template<typename Ret, typename... Args>
-struct function_traits<Ret (Args...)>
-{
-    static constexpr size_t arity = sizeof... (Args);
-    using return_type = Ret;
-    using arg_types = tuple<Args...>;
-};
-
-template<typename Ret, typename... Args>
-struct function_traits<Ret (*)(Args...)> : function_traits<Ret (Args...)> {};
-
-template<typename Ret, typename... Args>
-struct function_traits<Ret (&)(Args...)> : function_traits<Ret (Args...)> {};
-
-template<class Class, typename Ret, typename... Args>
-struct function_traits<Ret (Class::*)(Args...)> : function_traits<Ret (Args...)>
-{
-    using class_type = Class;
-};
-
-template<class Class, typename Ret, typename... Args>
-struct function_traits<Ret (Class::*)(Args...) const> : function_traits<Ret (Args...)>
-{
-    using class_type = Class;
-};
-
-template<class Class, typename Ret, typename... Args>
-struct function_traits<Ret (Class::*)(Args...) volatile> : function_traits<Ret (Args...)>
-{
-    using class_type = Class;
-};
-
-template<class Class, typename Ret, typename... Args>
-struct function_traits<Ret (Class::*)(Args...) const volatile> : function_traits<Ret (Args...)>
-{
-    using class_type = Class;
-};
-
-template<typename Type>
-struct function_traits<std::function<Type>> : function_traits<Type> {};
-
-//////////////////////////////////////////////////////////
-/// arguments
-template<typename Func, size_t Index>
-struct param_types
-{
-    using type = typename tuple_element<Index, typename function_traits<Func>::arg_types>::type;
-};
-
-template<typename Func, size_t Index>
-using param_types_t = typename param_types<Func, Index>::type;
-
-} // namespace impl
-
-//////////////////////////////////////////////////////////////////////////////////////
-/// expand the tuple
-///
-namespace tuple_invoke
-{
-
-template<size_t N>
-struct ApplyMember
-{
-    template<class Class, typename Func, typename Tuple, typename... Arguments>
-    static inline auto apply(Class&& c, Func&& f, Tuple&& t, Arguments&&... a) ->
-        decltype(ApplyMember<N-1>::apply(forward<Class>(c), forward<Func>(f), forward<Tuple>(t), get<N-1>(forward<Tuple>(t)), forward<Arguments...>(a)...))
-    {
-        return ApplyMember<N-1>::apply(forward<Class>(c), forward<Func>(f), forward<Tuple>(t), get<N-1>(forward<Tuple>(t)), forward<Arguments...>(a)...);
-    }
-};
-
-// call the method
-template<>
-struct ApplyMember<0>
-{
-    template<class Class, typename Func, typename Tuple, typename... Arguments>
-    static inline auto apply(Class&& c, Func&& f, Tuple&&, Arguments&&... a) ->
-        decltype((forward<Class>(c)->*forward<Func>(f))(forward<Arguments>(a)...))
-    {
-        return(forward<Class>(c)->*forward<Func>(f))(forward<Arguments>(a)...);
-    }
-};
-
-// the main function
-template<class Class, typename Func, typename Tuple>
-inline auto apply(Class&& c, Func&& f, Tuple&& t) ->
-    decltype(ApplyMember<tuple_size<typename decay<Tuple>::type>::value>::apply(forward<Class>(c), forward<Func>(f), forward<Tuple>(t)))
-{
-    return ApplyMember<tuple_size<typename decay<Tuple>::type>::value>::apply(forward<Class>(c), forward<Func>(f), forward<Tuple>(t));
-}
-
-} // namespace tuple_invoke
 //////////////////////////////////////////////////////////////////////////////////////
 ///
 ///
 class MetaMethodBase
 {
 public:
-    struct ArgumentType
-    {
-        type_index m_type;
-        bool m_isConst:1;
-        bool m_isRef:1;
-
-        template<typename Type>
-        static ArgumentType &&value()
-        {
-            return move( ArgumentType{
-                             typeid(Type),
-                             is_const<typename remove_reference<Type>::type>::value,
-                             is_reference<typename remove_const<Type>::type>::value
-                         });
-        }
-
-        bool operator ==(const ArgumentType &that) const
-        {
-            return (m_type == that.m_type)
-                   && (m_isRef == that.m_isRef)
-                   && (m_isConst == that.m_isConst);
-        }
-
-        bool isCompatible(const ArgumentType &invoked) const
-        {
-            if (m_type != invoked.m_type) {
-                return false;
-            }
-            if (m_isRef && m_isRef != invoked.m_isRef) {
-                // non-reference invokes are allowed only if the declaration is const
-                return m_isConst;
-            }
-            return true;
-        }
-    };
 
     virtual ~MetaMethodBase() {}
     explicit MetaMethodBase(const string &name)
@@ -157,24 +27,16 @@ public:
     {
     }
 
-    template<typename... Arguments>
-    static constexpr vector<ArgumentType> argumentTypes(Arguments && ...args)
-    {
-        array<ArgumentType, sizeof... (Arguments)> aa = { ArgumentType::value<Arguments>()... };
-        return vector<ArgumentType>(aa.begin(), aa.end());
-    }
-
     string name() const
     {
         return m_name;
     }
 
-    typedef vector<ArgumentType>::const_iterator ArgumentIterator;
-    ArgumentIterator argumentsBegin() const
+    arguments::ArgIterator argumentsBegin() const
     {
         return ++m_arguments.begin();
     }
-    ArgumentIterator argumentsEnd() const
+    arguments::ArgIterator argumentsEnd() const
     {
         return m_arguments.end();
     }
@@ -184,16 +46,16 @@ public:
         return m_arguments.size() - 1;
     }
 
-    bool isReturnType(const ArgumentType &retType)
+    bool isReturnType(const arguments::ArgumentType &retType)
     {
         return (m_arguments[0] == retType);
     }
 
-    bool compatibleArguments(const vector<ArgumentType> &invokeArgs)
+    bool compatibleArguments(const arguments::ArgContainer &invokeArgs)
     {
         if (m_arguments.size() - 1 == invokeArgs.size()) {
-            vector<ArgumentType>::const_iterator argsThis = ++m_arguments.cbegin();
-            vector<ArgumentType>::const_iterator argsThat = invokeArgs.cbegin();
+            arguments::ArgIterator argsThis = ++m_arguments.cbegin();
+            arguments::ArgIterator argsThat = invokeArgs.cbegin();
             bool ok = true;
             while (ok && (argsThis != m_arguments.cend()) && (argsThat != invokeArgs.cend())) {
                 ok = argsThis->isCompatible((*argsThat));
@@ -216,17 +78,8 @@ public:
     }
 
 protected:
-    template<class TObject, typename TReturnType, typename... Arguments>
-    void extractArguments(TReturnType (TObject::*)(Arguments...))
-    {
-        const array<ArgumentType, sizeof... (Arguments) + 1> args =
-                { ArgumentType::value<TReturnType>(), ArgumentType::value<Arguments>()... };
-        m_arguments = {args.begin(), args.end()};
-    }
-
-private:
     string m_name;
-    vector<ArgumentType> m_arguments;
+    arguments::ArgContainer m_arguments;
 };
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -241,7 +94,7 @@ public:
         : MetaMethodBase(name)
         , m_method(method)
     {
-        extractArguments(method);
+        m_arguments = arguments::argumentTypes(method);
     }
     virtual ~MetaMethod() {}
 
@@ -300,9 +153,6 @@ public:
         return m_superClass;
     }
 
-    template<typename TReturnType = void, typename... Arguments>
-    MetaMethodBase *metaMethod(MetaObject *object, const string &signature);
-
     template<typename TReturnType, typename... Arguments>
     static bool invoke(MetaObject *o, const string &signature, Arguments... args);
     template<typename TReturnType, typename... Arguments>
@@ -319,19 +169,17 @@ public:
         for (MetaMethodIterator i = range.first; i != range.second; ++i) {
             size_t argCount = tuple_size<typename decay<Tuple>::type>::value;
             if (i->second->argumentCount() == argCount) {
-                tuple_invoke::apply(object, i->second->m_method, forward<Tuple>(arguments));
+//                tuple_invoke::apply(object, i->second->m_method, forward<Tuple>(arguments));
                 return true;
             }
         }
         return false;
     }
 
-private:
-
     template<typename TReturnType>
-    MetaMethodBase *getMethod(const string &name, const vector<MetaMethodBase::ArgumentType> &argTypes) const
+    MetaMethodBase *getMethod(const string &name, const arguments::ArgContainer &argTypes) const
     {
-        MetaMethodBase::ArgumentType returnType = MetaMethodBase::ArgumentType::value<TReturnType>();
+        arguments::ArgumentType returnType = arguments::ArgumentType::value<TReturnType>();
         for (auto mm : m_methods) {
             if ((mm.first == name) &&
                 mm.second->isReturnType(returnType) &&
@@ -408,20 +256,10 @@ MetaClass::MetaMethodRange MetaClass::methodRange(MetaObject *object, const stri
     return object->metaObject()->m_methods.equal_range(name);
 }
 
-template<typename TReturnType = void, typename... Arguments>
-MetaMethodBase *metaMethod(MetaObject *object, const string &signature)
-{
-    array<MetaMethodBase::ArgumentType, sizeof... (Arguments)> aa = { MetaMethodBase::ArgumentType::value<Arguments>()... };
-    vector<MetaMethodBase::ArgumentType> argTypes = {aa.begin(), aa.end()};
-    MetaClass *mo = const_cast<MetaClass*>(object->metaObject());
-    return mo->getMethod<TReturnType>(signature, argTypes);
-}
-
-
 template<typename TReturnType, typename... Arguments>
 bool MetaClass::invoke(MetaObject *o, const string &signature, Arguments... args)
 {
-    vector<MetaMethodBase::ArgumentType> argTypes = MetaMethodBase::argumentTypes(forward<Arguments>(args)...);
+    arguments::ArgContainer argTypes = arguments::argumentTypes(forward<Arguments>(args)...);
     MetaClass *mo = const_cast<MetaClass*>(o->metaObject());
     while (mo) {
         MetaMethodBase *method = mo->getMethod<TReturnType>(signature, argTypes);
@@ -442,7 +280,7 @@ bool MetaClass::invoke(MetaObject *o, const string &signature, Arguments... args
 template<typename TReturnType, typename... Arguments>
 bool MetaClass::invoke(MetaObject *o, TReturnType &ret, const string &signature, Arguments... args)
 {
-    vector<MetaMethodBase::ArgumentType> argTypes = MetaMethodBase::argumentTypes(forward<Arguments>(args)...);
+    arguments::ArgContainer argTypes = arguments::argumentTypes(forward<Arguments>(args)...);
     MetaClass *mo = const_cast<MetaClass*>(o->metaObject());
     while (mo) {
         MetaMethodBase *method = o->metaObject()->getMethod<TReturnType>(signature, argTypes);
@@ -459,7 +297,6 @@ bool MetaClass::invoke(MetaObject *o, TReturnType &ret, const string &signature,
             }
         }
         // continue in superclass
-        cout << "super-" << signature;
         mo = const_cast<MetaClass*>(mo->superClass());
     }
     return false;

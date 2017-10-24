@@ -15,6 +15,7 @@ class Object : public MetaObject
         META_METHOD(intRetArgFunc, int, int)
         META_METHOD(intRetVectorFunc, size_t, const vector<int>&)
         META_METHOD(intRetVectorFunc, size_t, int, const vector<int>&)
+        META_METHOD(intRetVectorFunc2, int, int, const vector<int>&)
         META_METHOD(voidStringFunc, void, const string&)
         META_METHOD(voidCStringFunc, void, const char*)
         META_METHOD(abstractMethod, int, const vector<int>&)
@@ -35,6 +36,7 @@ public:
     int intRetArgFunc(int arg) { return arg * 10; }
     virtual size_t intRetVectorFunc(const vector<int> &v) { return v.size(); }
     size_t intRetVectorFunc(int, const vector<int> &v) { return v.size(); }
+    int intRetVectorFunc2(int i, const vector<int> &v) { return i * int(v.size()); }
     void voidStringFunc(const string &s) { cout << "STRING: " << s << endl; }
     void voidCStringFunc(const char *s) { cout << "CSTRING: " << s << endl; }
     int abstractMethod(const vector<int>& v) override { return 100 * v.size(); }
@@ -58,23 +60,6 @@ public:
 };
 METAOBJECT(Derived, Object)
 
-
-//////////////////////////////////////////////////////////////////////////////////////
-/// Invoker for connect
-///
-template<typename Function>
-bool invokeMethod(MetaObject *object, const string &name, int argumentCount, Function getArgument)
-{
-    const MetaClass *mo = object->metaObject();
-    MetaClass::MetaMethodRange range = MetaClass::methodRange(object, name);
-    for (MetaClass::MetaMethodIterator i = range.first; i != range.second; ++i) {
-        if (i->second->argumentCount() == argumentCount) {
-            auto args = make_tuple(getArgument(0));
-            (void)(args);
-        }
-    }
-    return false;
-}
 
 //////////////////////////////////////////////////////////////////////////////////////
 ///
@@ -141,12 +126,24 @@ int main()
     MetaClass::MetaMethodRange range = MetaClass::methodRange(object.get(), "intRetVectorFunc");
     for (MetaClass::MetaMethodIterator i = range.first; i != range.second; ++i) {
         cout << "method " << i->second->argumentCount() << endl;
-        for (MetaMethodBase::ArgumentIterator j = i->second->argumentsBegin(); j != i->second->argumentsEnd(); ++j) {
-            cout << "arg " << j->m_type.name() << endl;
+        for (arguments::ArgIterator j = i->second->argumentsBegin(); j != i->second->argumentsEnd(); ++j) {
+            cout << "  arg " << j->m_type.name() << endl;
         }
     }
 
-    // metatype
-    cout << MetaType::fromTypeIndex(typeid(ret));
+    // tuple_invoke
+    {
+        arguments::ArgContainer args = {
+            arguments::ArgumentType::value<int>(),
+            arguments::ArgumentType::value<vector<int>>()
+        };
+        const MetaClass *mo = object->metaObject();
+        const MetaMethodBase *method = mo->getMethod<int>("intRetVectorFunc", args);
+        (void)(method);
+        auto t = make_tuple(12, vector<int>({1, 2, 3, 4}));
+        Object *o = object.get();
+        cout << "TUPLECALL " << tuple_invoke::apply(o, &Object::intRetVectorFunc2, t) << endl;
+//        method->apply<Object>(object.get(), &Object::intRetVectorFunc, t);
+    }
     return 0;
 }
