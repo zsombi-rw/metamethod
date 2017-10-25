@@ -17,6 +17,7 @@ using namespace std;
 //////////////////////////////////////////////////////////////////////////////////////
 ///
 ///
+class MetaObject;
 class MetaMethodBase
 {
 public:
@@ -77,6 +78,8 @@ public:
         return false;
     }
 
+    virtual bool invoke(MetaObject *object, ReturnArgumentBase ret, vector<ArgumentBase> &args) = 0;
+
 protected:
     string m_name;
     arguments::ArgContainer m_arguments;
@@ -111,10 +114,25 @@ public:
     inline auto apply(TObject *object, Tuple&& t)
     {
         if (std::is_same<TReturnType, void>::value) {
-            tuple_invoke::apply(object, m_method, forward<Tuple>(t));
+            tuple_invoke::apply(m_method, object, forward<Tuple>(t));
         } else {
-            return tuple_invoke::apply(object, m_method, forward<Tuple>(t));
+            return tuple_invoke::apply(m_method, object, forward<Tuple>(t));
         }
+    }
+
+    bool invoke(MetaObject *object, ReturnArgumentBase ret, vector<ArgumentBase> &args) override
+    {
+        if (args.size() != argumentCount()) {
+            return false;
+        }
+        // check if the return type is similar to what we need
+        if (ret.isValid() && !isReturnType(ret.type())) {
+            return false;
+        }
+
+        // TODO: invoke the method
+
+        return true;
     }
 };
 
@@ -157,6 +175,10 @@ public:
     static bool invoke(MetaObject *o, const string &signature, Arguments... args);
     template<typename TReturnType, typename... Arguments>
     static bool invoke(MetaObject *o, TReturnType &ret, const string &signature, Arguments... args);
+
+    static bool invoke(MetaObject *object, const string &name,
+                       ReturnArgumentBase ret = ReturnArgumentBase(),
+                       vector<ArgumentBase> args = vector<ArgumentBase>());
 
     template<class TObject, typename Tuple>
     static bool apply(TObject *object, const string &name, Tuple&& arguments)
@@ -294,6 +316,29 @@ bool MetaClass::invoke(MetaObject *o, TReturnType &ret, const string &signature,
                     ret = mCasted->invoke(o, args...);
                 }
                 return true;
+            }
+        }
+        // continue in superclass
+        mo = const_cast<MetaClass*>(mo->superClass());
+    }
+    return false;
+}
+
+bool MetaClass::invoke(MetaObject *object, const string &name,
+                   ReturnArgumentBase ret, vector<ArgumentBase> args)
+{
+    if (args.size() > MAX_ARGS) {
+        return false;
+    }
+    MetaClass *mo = const_cast<MetaClass*>(object->metaObject());
+    while (mo) {
+        MetaMethodRange range = mo->methodRange(object, name);
+        for (MetaMethodIterator i = range.first; i != range.second; ++i) {
+            if (args.size() == i->second->argumentCount()) {
+                // call the invoker
+                if (i->second->invoke(object, ret, args)) {
+                    return true;
+                }
             }
         }
         // continue in superclass

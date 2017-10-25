@@ -18,6 +18,22 @@ struct ArgumentType
     bool m_isConst:1;
     bool m_isRef:1;
 
+    ArgumentType()
+        : m_type(typeid(void))
+        , m_isConst(false)
+        , m_isRef(false)
+    {}
+    ArgumentType(const ArgumentType &other)
+        : m_type(other.m_type)
+        , m_isConst(other.m_isConst)
+        , m_isRef(other.m_isRef)
+    {}
+    ArgumentType(const type_index &type, bool isConst, bool isRef)
+        : m_type(type)
+        , m_isConst(isConst)
+        , m_isRef(isRef)
+    {}
+
     template<typename Type>
     static ArgumentType &&value()
     {
@@ -68,5 +84,84 @@ static constexpr arguments::ArgContainer argumentTypes(TReturnType (TClass::*)(A
 }
 
 } // namespace arguments
+
+// generic argument holding values in variants
+class ArgumentBase
+{
+protected:
+    const char *m_name;
+    const void *m_data;
+    arguments::ArgumentType m_type;
+public:
+    explicit ArgumentBase(const char *name = nullptr, const void *data = nullptr)
+        : m_name(name)
+        , m_data(data)
+    {}
+    virtual ~ArgumentBase() {}
+    inline bool isValid() const
+    {
+        return m_name != nullptr;
+    }
+    inline const void *data() const
+    {
+        return const_cast<void*>(m_data);
+    }
+    inline const char *name() const
+    {
+        return m_name;
+    }
+
+    const arguments::ArgumentType &type() const
+    {
+        return m_type;
+    }
+};
+
+class ReturnArgumentBase : public ArgumentBase
+{
+public:
+    explicit ReturnArgumentBase(const char *name = nullptr, const void *data = nullptr)
+        : ArgumentBase(name, data)
+    {
+    }
+};
+
+// specializations
+template<class T>
+class Argument : public ArgumentBase
+{
+public:
+    inline Argument(const char *name, T &data)
+        : ArgumentBase(name, static_cast<const void*>(data))
+    {
+        m_type = arguments::ArgumentType::value<T>();
+    }
+};
+
+template<class T>
+class Argument<T &> : public ArgumentBase
+{
+public:
+    inline Argument(const char *name, T &data)
+        : ArgumentBase(name, static_cast<const void*>(data))
+    {
+        m_type = arguments::ArgumentType::value<T>();
+    }
+};
+
+template<class T>
+class ReturnArgument : public ReturnArgumentBase
+{
+public:
+    inline ReturnArgument(const char *name, T &data)
+        : ReturnArgumentBase(name, static_cast<const void*>(data))
+    {
+    }
+};
+
+#define ARG(type, value)        Argument<type>(#type, value)
+#define RET_ARG(type, value)    ReturnArgument<type>(#type, value)
+
+#define MAX_ARGS    10
 
 #endif // ARGUMENTS_H
