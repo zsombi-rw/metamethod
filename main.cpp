@@ -142,7 +142,7 @@ int main()
         (void)(method);
         auto t = make_tuple(12, vector<int>({1, 2, 3, 4}));
         Object *o = object.get();
-        cout << "TUPLECALL " << tuple_invoke::apply(o, &Object::intRetVectorFunc2, t) << endl;
+        cout << "TUPLECALL " << tuple_invoke::apply(&Object::intRetVectorFunc2, o, t) << endl;
 //        method->apply<Object>(object.get(), &Object::intRetVectorFunc, t);
     }
     return 0;

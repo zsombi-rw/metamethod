@@ -1,45 +1,31 @@
 #ifndef INVOKERS_H
 #define INVOKERS_H
 
+#include <functional>
+#include <utility>  // index_sequence
+
 using namespace std;
 
-/////////////////////////////////////////////////////////////////////////////////////
-/// expand the tuple and invoke
-///
 namespace tuple_invoke
 {
 
-template<size_t N>
-struct ApplyMember
+namespace impl
 {
-    template<class Class, typename Func, typename Tuple, typename... Arguments>
-    static inline auto apply(Class&& c, Func&& f, Tuple&& t, Arguments&&... a) ->
-        decltype(ApplyMember<N-1>::apply(forward<Class>(c), forward<Func>(f), forward<Tuple>(t), get<N-1>(forward<Tuple>(t)), forward<Arguments...>(a)...))
-    {
-        return ApplyMember<N-1>::apply(forward<Class>(c), forward<Func>(f), forward<Tuple>(t), get<N-1>(forward<Tuple>(t)), forward<Arguments...>(a)...);
-    }
-};
-
-// call the method
-template<>
-struct ApplyMember<0>
+template <class Class, typename Func, typename Tuple, size_t... Indices>
+constexpr auto apply(Class&& o, Func&& f, Tuple&& t, index_sequence<Indices...>)
 {
-    template<class Class, typename Func, typename Tuple, typename... Arguments>
-    static inline auto apply(Class&& c, Func&& f, Tuple&&, Arguments&&... a) ->
-        decltype((forward<Class>(c)->*forward<Func>(f))(forward<Arguments>(a)...))
-    {
-        return(forward<Class>(c)->*forward<Func>(f))(forward<Arguments>(a)...);
-    }
-};
-
-// the main function
-template<class Class, typename Func, typename Tuple>
-inline auto apply(Class&& c, Func&& f, Tuple&& t) ->
-    decltype(ApplyMember<tuple_size<typename decay<Tuple>::type>::value>::apply(forward<Class>(c), forward<Func>(f), forward<Tuple>(t)))
-{
-    return ApplyMember<tuple_size<typename decay<Tuple>::type>::value>::apply(forward<Class>(c), forward<Func>(f), forward<Tuple>(t));
+    return(forward<Class>(o)->*forward<Func>(f))(get<Indices>(forward<Tuple>(t))...);
 }
+} // namespace impl
 
+template <class Func, class Class, class Tuple>
+constexpr auto apply(Func&& f, Class&& o, Tuple&& t)
+{
+    return impl::apply(
+        forward<Class>(o), forward<Func>(f), forward<Tuple>(t),
+        make_index_sequence<tuple_size<decay_t<Tuple>>::value>{});
+}
 } // namespace tuple_invoke
+
 
 #endif // INVOKERS_H
