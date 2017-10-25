@@ -14,6 +14,8 @@
 
 using namespace std;
 
+#define USE_INVOKER
+
 //////////////////////////////////////////////////////////////////////////////////////
 ///
 ///
@@ -277,21 +279,22 @@ public:
 #define METAOBJECT(Class, SuperClass) \
 const MetaClass Class::staticMetaObject { &SuperClass::staticMetaObject };
 
-//#define META_METHOD(Method, ReturnType, ...) \
-//    { \
-//        ReturnType (TClass::*ptrMethod)(##__VA_ARGS__) = &TClass::Method; \
-//        mo->addMetaMethod(new MetaMethod<TClass, ReturnType, ##__VA_ARGS__>( \
-//            ptrMethod, \
-//            nullptr, \
-//            #Method)); \
-//    }
-
+#if defined(USE_INVOKER)
+#define META_METHOD(Method, ReturnType, ...) \
+    { \
+        ReturnType (TClass::*ptrMethod)(##__VA_ARGS__) = &TClass::Method; \
+        mo->addMetaMethod(new MetaMethod<TClass, ReturnType, ##__VA_ARGS__>( \
+            ptrMethod, \
+            nullptr, \
+            #Method)); \
+    }
+#else
 #define META_METHOD(Method, ReturnType, ...) \
     mo->addMetaMethod(new MetaMethod<TClass, ReturnType, ##__VA_ARGS__>( \
         &TClass::Method, \
         nullptr, \
         #Method));
-
+#endif
 //////////////////////////////////////////////////////////////////////////////////////
 ///
 ///
@@ -305,7 +308,7 @@ public:
     {
         typedef class MetaObject TClass;
         MetaClass *mo = const_cast<MetaClass*>(metaObject());
-//        META_METHOD(abstractMethod, int, const vector<int>&)
+        META_METHOD(abstractMethod, int, const vector<int>&)
     }
 
 public:

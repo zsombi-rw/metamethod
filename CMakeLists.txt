@@ -14,5 +14,4 @@ set(HEADER
     ${CMAKE_CURRENT_SOURCE_DIR}/arguments.h
     ${CMAKE_CURRENT_SOURCE_DIR}/invokers.h
     )
-# add_executable(${PROJECT_NAME} "main.cpp")
 add_executable(${PROJECT_NAME} ${SOURCE} ${HEADER})
