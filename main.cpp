@@ -145,5 +145,8 @@ int main()
         cout << "TUPLECALL " << tuple_invoke::apply(&Object::intRetVectorFunc2, o, t) << endl;
 //        method->apply<Object>(object.get(), &Object::intRetVectorFunc, t);
     }
+
+    // dynamic invoke
+    VERIFY(MetaClass::invoke(object.get(), "voidFunc"));
     return 0;
 }

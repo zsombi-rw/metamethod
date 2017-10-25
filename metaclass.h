@@ -14,8 +14,6 @@
 
 using namespace std;
 
-#define USE_INVOKER
-
 //////////////////////////////////////////////////////////////////////////////////////
 ///
 ///
@@ -28,7 +26,7 @@ typedef void (*Invoker)(MetaObject*, ReturnArgumentBase ret, vector<ArgumentBase
 template <class TClass, typename Ret, Ret (TClass::*Fun)()>
 void invoker (MetaObject *object, ReturnArgumentBase ret, vector<ArgumentBase>)
 {
-    (object->*Fun)();
+    (static_cast<TClass*>(object)->*Fun)();
 }
 
 template <class TClass, typename Ret, typename T1, Ret (TClass::*Fun)(T1)>
@@ -279,22 +277,12 @@ public:
 #define METAOBJECT(Class, SuperClass) \
 const MetaClass Class::staticMetaObject { &SuperClass::staticMetaObject };
 
-#if defined(USE_INVOKER)
-#define META_METHOD(Method, ReturnType, ...) \
-    { \
-        ReturnType (TClass::*ptrMethod)(##__VA_ARGS__) = &TClass::Method; \
-        mo->addMetaMethod(new MetaMethod<TClass, ReturnType, ##__VA_ARGS__>( \
-            ptrMethod, \
-            nullptr, \
-            #Method)); \
-    }
-#else
 #define META_METHOD(Method, ReturnType, ...) \
     mo->addMetaMethod(new MetaMethod<TClass, ReturnType, ##__VA_ARGS__>( \
         &TClass::Method, \
-        nullptr, \
+        &metainvoker::invoker<TClass, ReturnType, ##__VA_ARGS__, &TClass::Method>, \
         #Method));
-#endif
+
 //////////////////////////////////////////////////////////////////////////////////////
 ///
 ///
