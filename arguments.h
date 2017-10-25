@@ -132,7 +132,7 @@ class Argument : public ArgumentBase
 {
 public:
     inline Argument(const char *name, T &data)
-        : ArgumentBase(name, static_cast<const void*>(data))
+        : ArgumentBase(name, static_cast<const void*>(&data))
     {
         m_type = arguments::ArgumentType::value<T>();
     }
@@ -143,9 +143,14 @@ class Argument<T &> : public ArgumentBase
 {
 public:
     inline Argument(const char *name, T &data)
-        : ArgumentBase(name, static_cast<const void*>(data))
+        : ArgumentBase(name, static_cast<const void*>(&data))
     {
         m_type = arguments::ArgumentType::value<T>();
+    }
+
+    T value() const
+    {
+        static_cast<T>(data);
     }
 };
 
@@ -162,6 +167,7 @@ public:
 #define ARG(type, value)        Argument<type>(#type, value)
 #define RET_ARG(type, value)    ReturnArgument<type>(#type, value)
 
-#define MAX_ARGS    10
+#define MAX_ARGS    3
+
 
 #endif // ARGUMENTS_H

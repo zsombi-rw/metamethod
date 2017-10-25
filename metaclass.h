@@ -18,6 +18,34 @@ using namespace std;
 ///
 ///
 class MetaObject;
+namespace metainvoker
+{
+
+typedef void (*Invoker)(MetaObject*, ReturnArgumentBase ret, vector<ArgumentBase>);
+
+template <class TClass, typename Ret, Ret (TClass::*Fun)()>
+void invoker (MetaObject *object, ReturnArgumentBase ret, vector<ArgumentBase>)
+{
+    (object->*Fun)();
+}
+
+template <class TClass, typename Ret, typename T1, Ret (TClass::*Fun)(T1)>
+void invoker (MetaObject *object, ReturnArgumentBase ret, vector<ArgumentBase>)
+{
+}
+
+template <class TClass, typename Ret, typename T1, typename T2, Ret (TClass::*Fun)(T1, T2)>
+void invoker (MetaObject *object, ReturnArgumentBase ret, vector<ArgumentBase>)
+{
+
+}
+
+
+} // namespace metainvoker
+//////////////////////////////////////////////////////////////////////////////////////
+///
+///
+class MetaObject;
 class MetaMethodBase
 {
 public:
@@ -92,9 +120,12 @@ template <class TObject, typename TReturnType, typename... Arguments>
 class MetaMethod : public MetaMethodBase
 {
     TReturnType (TObject::*m_method)(Arguments...);
+    metainvoker::Invoker m_invoker = nullptr;
 public:
-    explicit MetaMethod(TReturnType (TObject::*method)(Arguments...), const string &name)
+
+    explicit MetaMethod(TReturnType (TObject::*method)(Arguments...), metainvoker::Invoker invoker, const string &name)
         : MetaMethodBase(name)
+        , m_invoker(invoker)
         , m_method(method)
     {
         m_arguments = arguments::argumentTypes(method);
@@ -130,7 +161,10 @@ public:
             return false;
         }
 
-        // TODO: invoke the method
+        // invoke the method
+        if (m_invoker) {
+            m_invoker(object, ret, args);
+        }
 
         return true;
     }
@@ -243,8 +277,20 @@ public:
 #define METAOBJECT(Class, SuperClass) \
 const MetaClass Class::staticMetaObject { &SuperClass::staticMetaObject };
 
+//#define META_METHOD(Method, ReturnType, ...) \
+//    { \
+//        ReturnType (TClass::*ptrMethod)(##__VA_ARGS__) = &TClass::Method; \
+//        mo->addMetaMethod(new MetaMethod<TClass, ReturnType, ##__VA_ARGS__>( \
+//            ptrMethod, \
+//            nullptr, \
+//            #Method)); \
+//    }
+
 #define META_METHOD(Method, ReturnType, ...) \
-    mo->addMetaMethod(new MetaMethod<TClass, ReturnType, ##__VA_ARGS__>(&TClass::Method, #Method));
+    mo->addMetaMethod(new MetaMethod<TClass, ReturnType, ##__VA_ARGS__>( \
+        &TClass::Method, \
+        nullptr, \
+        #Method));
 
 //////////////////////////////////////////////////////////////////////////////////////
 ///
@@ -259,7 +305,7 @@ public:
     {
         typedef class MetaObject TClass;
         MetaClass *mo = const_cast<MetaClass*>(metaObject());
-        META_METHOD(abstractMethod, int, const vector<int>&)
+//        META_METHOD(abstractMethod, int, const vector<int>&)
     }
 
 public:
